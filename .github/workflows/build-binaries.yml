@@ -1,0 +1,89 @@
+name: Build & Release Binaries
+
+on:
+  workflow_call:
+    inputs:
+      # The binary name (the name of your crate)
+      binary_name:
+        description: 'Name of the binary to build'
+        type: string
+        required: true
+
+      # Optional custom build command
+      build_command:
+        description: 'Build command (defaults to cargo build)'
+        type: string
+        default: 'cargo build --release --target ${{ matrix.target }}'
+
+      # Targets to build (space separated)
+      targets:
+        description: 'Comma-separated targets (e.g., "x86_64-unknown-linux-gnu,x86_64-pc-windows-msvc,x86_64-apple-darwin")'
+        type: string
+        default: 'x86_64-unknown-linux-gnu,x86_64-pc-windows-msvc,x86_64-apple-darwin'
+
+permissions:
+  contents: write
+
+jobs:
+  build-binaries:
+    name: Build binaries for ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        target: ${{ fromJson(format('["{0}"]', join(split(inputs.targets, ','), '","'))) }}
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+          - target: x86_64-apple-darwin
+            os: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      # Use the custom build command or default
+      - name: Build
+        shell: bash
+        run: |
+          if [ "${{ inputs.build_command }}" != "cargo build --release --target ${{ matrix.target }}" ]; then
+            # Use custom command
+            ${{ inputs.build_command }}
+          else
+            cargo build --release --target ${{ matrix.target }}
+          fi
+
+      - name: Package binary
+        shell: bash
+        run: |
+          BIN="target/${{ matrix.target }}/release/${{ inputs.binary_name }}"
+          [[ "${{ matrix.target }}" == *windows* ]] && BIN="$BIN.exe"
+          
+          if [[ "${{ matrix.target }}" == *windows* ]]; then
+            7z a "${{ inputs.binary_name }}-${{ matrix.target }}.zip" "$BIN"
+          else
+            tar czf "${{ inputs.binary_name }}-${{ matrix.target }}.tar.gz" -C "$(dirname "$BIN")" "$(basename "$BIN")"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.binary_name }}-${{ matrix.target }}
+          path: ${{ inputs.binary_name }}-${{ matrix.target }}.*
+
+  create-release:
+    needs: build-binaries
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/download-artifact@v4
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            **/*.tar.gz
+            **/*.zip
+          generate_release_notes: true
