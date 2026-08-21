@@ -17,7 +17,7 @@ on:
       build_command:
         description: 'Build command (defaults to cargo build)'
         type: string
-        default: 'cargo build --release --target ${{ matrix.target }}'
+        default: 'cargo build --release'
 
       # Targets to build (space separated)
       targets:
@@ -33,8 +33,9 @@ jobs:
     name: Build binaries for ${{ matrix.target }}
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
-        target: ${{ fromJson(format('["{0}"]', join(split(inputs.targets, ','), '","'))) }}
+        target: [x86_64-unknown-linux-gnu, x86_64-pc-windows-msvc, x86_64-apple-darwin]
         include:
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
@@ -44,6 +45,11 @@ jobs:
 
           - target: x86_64-apple-darwin
             os: macos-latest
+        # Filter targets based on input
+        exclude:
+          - target: ${{ !contains(inputs.targets, 'x86_64-unknown-linux-gnu') && 'x86_64-unknown-linux-gnu' || '' }}
+          - target: ${{ !contains(inputs.targets, 'x86_64-pc-windows-msvc') && 'x86_64-pc-windows-msvc' || '' }}
+          - target: ${{ !contains(inputs.targets, 'x86_64-apple-darwin') && 'x86_64-apple-darwin' || '' }}
 
     steps:
       - uses: actions/checkout@v4
@@ -56,11 +62,13 @@ jobs:
       - name: Build
         shell: bash
         run: |
-          if [ "${{ inputs.build_command }}" != "cargo build --release --target ${{ matrix.target }}" ]; then
-            # Use custom command
-            ${{ inputs.build_command }}
-          else
+          if [[ "${{ inputs.build_command }}" == "cargo build --release" ]]; then
             cargo build --release --target ${{ matrix.target }}
+          else
+            # Use custom command - replace ${{ matrix.target }} if present
+            CMD="${{ inputs.build_command }}"
+            echo "Running: ${CMD//\${{ matrix.target }}/${{ matrix.target }}}"
+            ${CMD//\${{ matrix.target }}/${{ matrix.target }}}
           fi
 
       - name: Package binary
