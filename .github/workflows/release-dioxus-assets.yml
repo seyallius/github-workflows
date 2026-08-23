@@ -1,0 +1,61 @@
+# .github/workflows/release-dioxus-assets.yml
+# Reusable workflow that creates a GitHub Release for a Dioxus app.
+# Downloads artifacts from a prior build and attaches them.
+
+name: Release Dioxus App
+
+on:
+  workflow_call:
+    inputs:
+      app_name:
+        description: 'Name of the Dioxus app (for artifact pattern)'
+        type: string
+        required: true
+
+      tag_name:
+        description: 'Git tag to create the release from (defaults to current ref)'
+        type: string
+        required: false
+        default: ''
+
+      generate_release_notes:
+        description: 'Generate release notes automatically'
+        type: boolean
+        default: true
+
+      draft:
+        description: 'Mark as draft release'
+        type: boolean
+        default: false
+
+      prerelease:
+        description: 'Mark as prerelease'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  attach-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: List downloaded files
+        run: find artifacts/ -type f
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag_name || github.ref_name }}
+          files: |
+            artifacts/linux-deb/*.deb
+            artifacts/linux-appimage/*.AppImage
+            artifacts/linux-rpm/*.rpm
+            artifacts/macos-dmg/*.dmg
+            artifacts/windows-msi/*.msi
+          generate_release_notes: ${{ inputs.generate_release_notes }}
+          draft: ${{ inputs.draft }}
+          prerelease: ${{ inputs.prerelease }}

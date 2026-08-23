@@ -1,8 +1,13 @@
-# .github/workflows/release-assets.yml
+# .github/workflows/build-binaries.yml (DEPRECATED)
 # Builds and uploads release binaries with standard Rust target triple naming.
-# This naming convention enables automatic discovery by cargo-binstall.
+#
+# ⚠️ THIS WORKFLOW IS DEPRECATED ⚠️
+# Please migrate to the new separated workflows:
+#   - build-assets.yml  (reusable build)
+#   - release-assets.yml  (reusable release)
+# See https://github.com/seyallius/github-workflows#migration-guide
 
-name: Build & Release Binaries
+name: Build & Release Binaries (DEPRECATED)
 
 on:
   workflow_call:
@@ -25,10 +30,54 @@ on:
         type: string
         default: 'x86_64-unknown-linux-gnu,x86_64-pc-windows-msvc,x86_64-apple-darwin'
 
+      # Allow users to suppress the deprecation warning (default: false)
+      ignore_deprecation:
+        description: 'Suppress the deprecation warning and continue'
+        type: boolean
+        default: false
+
+      # Force failure after a certain date (optional)
+      enforce_migration_date:
+        description: 'Date after which the workflow will fail (YYYY-MM-DD)'
+        type: string
+        default: '2027-01-01'   # example
+
 permissions:
   contents: write
 
 jobs:
+  deprecation-warning:
+    runs-on: ubuntu-latest
+    steps:
+      - name: ⚠️ Deprecation Notice
+        shell: bash
+        run: |
+          echo "::warning::This workflow (build-binaries.yml) is DEPRECATED."
+          echo "::warning::Please migrate to the new separated workflows:"
+          echo "::warning::  - build-assets.yml (for building)"
+          echo "::warning::  - release-assets.yml (for creating releases)"
+          echo "::warning::See the migration guide: https://github.com/seyallius/github-workflows#migration"
+
+          if [[ "${{ inputs.ignore_deprecation }}" != "true" ]]; then
+            echo "::warning::To temporarily suppress this warning, set 'ignore_deprecation: true'"
+          else
+            echo "::notice::Deprecation warning suppressed by 'ignore_deprecation'"
+          fi
+
+          # fail if after a certain date
+          ENFORCE_DATE="${{ inputs.enforce_migration_date }}"
+          if [[ -n "$ENFORCE_DATE" ]]; then
+            CURRENT_DATE=$(date +%Y-%m-%d)
+            if [[ "$CURRENT_DATE" > "$ENFORCE_DATE" ]]; then
+              if [[ "${{ inputs.ignore_deprecation }}" != "true" ]]; then
+                echo "::error::Deprecation period ended on $ENFORCE_DATE. Please migrate immediately."
+                exit 1
+              else
+                echo "::warning::Deprecation period ended, but 'ignore_deprecation' is true. Please migrate soon."
+              fi
+            fi
+          fi
+
   build-binaries:
     name: Build binaries for ${{ matrix.target }}
     runs-on: ${{ matrix.os }}

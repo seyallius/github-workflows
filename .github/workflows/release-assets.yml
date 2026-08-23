@@ -1,0 +1,64 @@
+# .github/workflows/release-assets.yml
+# Reusable workflow that creates a GitHub Release and attaches assets.
+# Must be called with contents:write permission from the caller.
+
+name: Release Assets
+
+on:
+  workflow_call:
+    inputs:
+      # The artifact name pattern from the build step.
+      # Default matches the pattern used in build-assets.yml.
+      artifact_pattern:
+        description: 'Pattern to match artifacts (e.g., "myapp-*")'
+        type: string
+        required: true
+
+      # Optional custom tag name (defaults to github.ref_name)
+      tag_name:
+        description: 'Git tag to create the release from (defaults to current ref)'
+        type: string
+        required: false
+        default: ''
+
+      generate_release_notes:
+        description: 'Generate release notes automatically'
+        type: boolean
+        default: true
+
+      draft:
+        description: 'Mark as draft release'
+        type: boolean
+        default: false
+
+      prerelease:
+        description: 'Mark as prerelease'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write   # Required to create a release
+
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: ${{ inputs.artifact_pattern }}
+          merge-multiple: true
+
+      - name: Display downloaded files (debug)
+        run: ls -la
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag_name || github.ref_name }}
+          files: |
+            *.tar.gz
+            *.zip
+          generate_release_notes: ${{ inputs.generate_release_notes }}
+          draft: ${{ inputs.draft }}
+          prerelease: ${{ inputs.prerelease }}
