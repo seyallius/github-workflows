@@ -35,13 +35,12 @@ permissions:
 
 jobs:
   build-binaries:
-    name: Build ${{ matrix.target }}
+    name: Build binaries for ${{ matrix.target }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        # Expand the comma-separated targets into a list
-        target: ${{ fromJson(format('["{0}"]', join(split(inputs.targets, ','), '","'))) }}
+        target: [ x86_64-unknown-linux-gnu, x86_64-pc-windows-msvc, x86_64-apple-darwin ]
         include:
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
@@ -51,10 +50,11 @@ jobs:
 
           - target: x86_64-apple-darwin
             os: macos-latest
-
-    outputs:
-      # We'll set this dynamically after packaging
-      artifact_names: ${{ steps.package.outputs.names }}
+        # Filter targets based on input
+        exclude:
+          - target: ${{ !contains(inputs.targets, 'x86_64-unknown-linux-gnu') && 'x86_64-unknown-linux-gnu' || '' }}
+          - target: ${{ !contains(inputs.targets, 'x86_64-pc-windows-msvc') && 'x86_64-pc-windows-msvc' || '' }}
+          - target: ${{ !contains(inputs.targets, 'x86_64-apple-darwin') && 'x86_64-apple-darwin' || '' }}
 
     steps:
       - uses: actions/checkout@v4
@@ -63,19 +63,20 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
+      # Use the custom build command or default
       - name: Build
         shell: bash
         run: |
           if [[ "${{ inputs.build_command }}" == "cargo build --release" ]]; then
             cargo build --release --target ${{ matrix.target }}
           else
+            # Use custom command - replace ${{ matrix.target }} if present
             CMD="${{ inputs.build_command }}"
             echo "Running: ${CMD//\${{ matrix.target }}/${{ matrix.target }}}"
             ${CMD//\${{ matrix.target }}/${{ matrix.target }}}
           fi
 
       - name: Package binary
-        id: package
         shell: bash
         env:
           VERSION: ${{ github.ref_name || 'latest' }}
@@ -83,10 +84,12 @@ jobs:
           BIN="target/${{ matrix.target }}/release/${{ inputs.binary_name }}"
           [[ "${{ matrix.target }}" == *windows* ]] && BIN="$BIN.exe"
 
+          # Use 'latest' if version is empty or a PR merge commit
           if [[ -z "${VERSION}" || "${VERSION}" == "merge" ]]; then
             VERSION="latest"
           fi
 
+          # Standard naming: {binary_name}-{version}-{target}.{ext}
           ARTIFACT="${{ inputs.binary_name }}-${VERSION}-${{ matrix.target }}"
 
           if [[ "${{ matrix.target }}" == *windows* ]]; then
