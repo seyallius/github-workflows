@@ -1,3 +1,7 @@
+# github-workflows/.github/workflows/release-plz.yml
+# Reusable workflow for semantic releases using release-plz.
+# Exposes outputs for downstream workflow chaining (e.g., asset builds).
+
 name: Release-plz
 
 on:
@@ -16,6 +20,15 @@ on:
       CARGO_REGISTRY_TOKEN:
         required: true
 
+    # Expose outputs for chaining
+    outputs:
+      release_created:
+        description: 'Whether a new release/tag was created ("true" or "false")'
+        value: ${{ jobs.release-plz-release.outputs.release_created }}
+      tag_name:
+        description: 'The Git tag name if a release was created (empty otherwise)'
+        value: ${{ jobs.release-plz-release.outputs.tag_name }}
+
 env:
   CARGO_TERM_COLOR: always
 
@@ -26,7 +39,9 @@ jobs:
     if: ${{ github.repository_owner == 'seyallius' }}
     permissions:
       contents: write
-
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -51,6 +66,7 @@ jobs:
             cargo-${{ runner.os }}-
 
       - name: Run release-plz
+        id: release
         uses: release-plz/action@v0.5
         with:
           command: release
