@@ -1,6 +1,6 @@
 # .github/workflows/build-assets.yml
-# Builds binaries and uploads artifacts.
-# Does NOT create a GitHub Release – that is handled by a separate workflow.
+# Builds binaries and uploads artifacts with cargo-binstall compatible naming.
+# Does NOT create a GitHub Release – that is handled by release-assets.yml.
 
 name: Build Binaries
 
@@ -23,6 +23,13 @@ on:
         description: 'Comma-separated targets'
         type: string
         default: 'x86_64-unknown-linux-gnu,x86_64-pc-windows-msvc,x86_64-apple-darwin'
+
+      # Explicit version for artifact naming
+      version:
+        description: 'Version string for artifact naming (e.g., v0.1.9). Defaults to github.ref_name.'
+        type: string
+        required: false
+        default: ''
 
     outputs:
       # Optional: you can output the artifact names if needed by the caller
@@ -63,23 +70,24 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
-      # Use the custom build command or default
+      # ----------------------- Build -----------------------
       - name: Build
         shell: bash
         run: |
           if [[ "${{ inputs.build_command }}" == "cargo build --release" ]]; then
             cargo build --release --target ${{ matrix.target }}
           else
-            # Use custom command - replace ${{ matrix.target }} if present
             CMD="${{ inputs.build_command }}"
             echo "Running: ${CMD//\${{ matrix.target }}/${{ matrix.target }}}"
             ${CMD//\${{ matrix.target }}/${{ matrix.target }}}
           fi
 
+      # ----------------------- Package with correct version -----------------------
       - name: Package binary
         shell: bash
         env:
-          VERSION: ${{ github.ref_name || 'latest' }}
+          # Prefer explicit version input > ref_name > fallback
+          VERSION: ${{ inputs.version || github.ref_name || 'latest' }}
         run: |
           BIN="target/${{ matrix.target }}/release/${{ inputs.binary_name }}"
           [[ "${{ matrix.target }}" == *windows* ]] && BIN="$BIN.exe"
@@ -89,7 +97,7 @@ jobs:
             VERSION="latest"
           fi
 
-          # Standard naming: {binary_name}-{version}-{target}.{ext}
+          # cargo-binstall compatible: {binary_name}-{version}-{target}.{ext}
           ARTIFACT="${{ inputs.binary_name }}-${VERSION}-${{ matrix.target }}"
 
           if [[ "${{ matrix.target }}" == *windows* ]]; then
@@ -97,12 +105,11 @@ jobs:
           else
             tar czf "${ARTIFACT}.tar.gz" -C "$(dirname "$BIN")" "$(basename "$BIN")"
           fi
+          echo "names=${ARTIFACT}.tar.gz ${ARTIFACT}.zip" >> "$GITHUB_OUTPUT"
 
-          # Store the artifact name for output
-          echo "names=${ARTIFACT}.tar.gz ${ARTIFACT}.zip" >> $GITHUB_OUTPUT
-
+      # ----------------------- Upload artifact -----------------------
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ inputs.binary_name }}-${{ github.ref_name }}-${{ matrix.target }}
-          path: ${{ inputs.binary_name }}-${{ github.ref_name || 'latest' }}-${{ matrix.target }}.*
+          name: ${{ inputs.binary_name }}-${{ env.VERSION }}-${{ matrix.target }}
+          path: ${{ inputs.binary_name }}-*-${{ matrix.target }}.*
