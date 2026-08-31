@@ -1,6 +1,12 @@
-# .github/workflows/release-assets.yml
-# Reusable workflow that creates a GitHub Release and attaches assets.
-# Must be called with contents:write permission from the caller.
+# =====================================================================
+# Docstring: .github/workflows/release-assets.yml
+# =====================================================================
+# This reusable workflow handles the creation of GitHub Releases and
+# the attachment of build artifacts. It is designed with graceful
+# degradation in mind. If partial builds succeed while others fail,
+# this workflow can be configured to push the successful assets rather
+# than failing the entire pipeline.
+# =====================================================================
 
 name: Release Assets
 
@@ -14,7 +20,6 @@ on:
         type: string
         required: true
 
-      # Optional custom tag name (defaults to github.ref_name)
       tag_name:
         description: 'Git tag to create the release from (defaults to current ref)'
         type: string
@@ -36,6 +41,11 @@ on:
         type: boolean
         default: false
 
+      fail_on_failure:
+        description: 'If true, fails the job if asset upload/download fails. If false, gracefully continues and uploads whatever is available.'
+        type: boolean
+        default: true
+
 permissions:
   contents: write   # Required to create a release
 
@@ -44,16 +54,25 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Download all artifacts
+        id: download
         uses: actions/download-artifact@v4
+        # If fail_on_failure is false, we ignore download errors (e.g., missing matrix artifacts)
+        continue-on-error: ${{ !inputs.fail_on_failure }}
         with:
           pattern: ${{ inputs.artifact_pattern }}
           merge-multiple: true
 
       - name: Display downloaded files (debug)
-        run: ls -la
+        # Only run debug if download succeeded, or if we don't care about failures
+        if: steps.download.outcome == 'success' || !inputs.fail_on_failure
+        run: |
+          echo "Download outcome: ${{ steps.download.outcome }}"
+          ls -la
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
+        # If fail_on_failure is false, we ignore release errors (e.g., missing specific files)
+        continue-on-error: ${{ !inputs.fail_on_failure }}
         with:
           tag_name: ${{ inputs.tag_name || github.ref_name }}
           files: |
