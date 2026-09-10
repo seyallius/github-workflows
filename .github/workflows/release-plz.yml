@@ -25,10 +25,10 @@ on:
     # Expose outputs for chaining
     outputs:
       release_created:
-        description: "Whether release-plz created any releases"
+        description: 'Whether a new release/tag was created ("true" or "false")'
         value: ${{ jobs.release-plz-release.outputs.release_created }}
       tag_name:
-        description: "The git tag name of the first released package"
+        description: 'The Git tag name if a release was created (empty otherwise)'
         value: ${{ jobs.release-plz-release.outputs.tag_name }}
 
 env:
@@ -44,8 +44,8 @@ jobs:
 
     # Captures outputs from specific steps within this job.
     outputs:
-      release_created: ${{ steps.release-plz-step.outputs.releases_created }}
-      tag_name: ${{ steps.extract-tag.outputs.tag_name }}
+      release_created: ${{ steps.release.outputs.releases_created || 'false' }}
+      tag_name: ${{ steps.release.outputs.releases && fromJSON(steps.release.outputs.releases)[0].tag || '' }}
 
     steps:
       - name: Checkout repository
